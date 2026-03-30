@@ -123,11 +123,22 @@ with st.sidebar:
 # ==========================================
 # 4. メイン入力エリア
 # ==========================================
+# ▼ 新機能：前回の名前を記憶するメモリを準備
+if "last_name" not in st.session_state:
+    st.session_state.last_name = "未選択"
+
+# リストの中から記憶した名前の順番（インデックス）を探す関数
+def get_name_index():
+    if st.session_state.last_name in st.session_state.members:
+        return st.session_state.members.index(st.session_state.last_name)
+    return 0
+
 if app_mode == "個人練習":
     st.subheader("📝 個人練習 記録フォーム")
     col1, col2 = st.columns(2)
     with col1:
-        selected_name = st.selectbox("氏名 (学年順)", st.session_state.members, index=0, key=f"pn_{st.session_state.form_version}")
+        # ▼ 初期値を「0」から「記憶した名前の順番」に変更！
+        selected_name = st.selectbox("氏名 (学年順)", st.session_state.members, index=get_name_index(), key=f"pn_{st.session_state.form_version}")
     with col2:
         practice_type = st.selectbox("種別", ["自主練習", "射込み", "立ち"], key=f"pt_{st.session_state.form_version}")
     
@@ -151,13 +162,11 @@ if app_mode == "個人練習":
 
 else: # 団体
     st.subheader("👥 団体（立ち） 記録フォーム")
-    # ▼ 人数の最小値を弓道に合わせて「2」に変更！
     num_members = st.sidebar.number_input("立ちの人数", min_value=2, max_value=6, value=3)
     practice_type = "立ち"
     positions = {1:["大前"], 2:["大前","落"], 3:["大前","中","落"], 4:["大前","二的","三的","落"], 5:["大前","二的","中","落前","落"], 6:["大前","二的","三的","四的","落前","落"]}
     cur_pos = positions.get(num_members, ["-"]*num_members)
     
-    # ▼ 団体の立数管理を追加（個人練習と同じ仕組み）
     if "group_rows" not in st.session_state: st.session_state.group_rows = 1
     c1, c2, _ = st.columns([1,1,4])
     with c1: 
@@ -166,22 +175,20 @@ else: # 団体
         if st.button("－ 1立削除", key="g_sub") and st.session_state.group_rows > 1: st.session_state.group_rows -= 1
     
     all_data = []
-    # ▼ 立の数だけ全体をループさせるように変更
     for r in range(st.session_state.group_rows):
         st.write(f"**{r+1}立目**")
         for i in range(num_members):
             cols = st.columns([1, 2, 1, 1, 1, 1])
             with cols[0]: st.write(f"**{cur_pos[i]}**")
             with cols[1]:
-                # 重複エラーを防ぐため、keyに「_r_」を含めて立ごとに別々のウィジェットにする
-                m_name = st.selectbox(f"g_m_{r}_{i}", st.session_state.members, index=i+1 if i+1 < len(st.session_state.members) else 0, key=f"gm_{r}_{i}_{st.session_state.form_version}", label_visibility="collapsed")
+                # ▼ 団体の大前（1人目）も、前回送信した名前を初期値にしておくハッキング！
+                default_idx = get_name_index() if i == 0 else (i+1 if i+1 < len(st.session_state.members) else 0)
+                m_name = st.selectbox(f"g_m_{r}_{i}", st.session_state.members, index=default_idx, key=f"gm_{r}_{i}_{st.session_state.form_version}", label_visibility="collapsed")
             row_res = []
             for a in range(4):
                 with cols[a+2]:
-                    # ここもkeyに「_r_」を含める
                     res = st.selectbox(f"gr_{r}_{i}_{a}", ["未", "○", "×"], key=f"gr_{r}_{i}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
                     row_res.append(res)
-            # "1立目" だった部分を f"{r+1}立目" に変更
             all_data.append({"name": m_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
         st.write("---")
 
@@ -197,10 +204,14 @@ if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_co
             # 保存時は名前のみ抽出
             rows = [[now, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
             sheet.append_rows(rows)
+            
+            # ▼▼▼ 新機能：送信した人の名前を「短期記憶」に刻み込む ▼▼▼
+            st.session_state.last_name = all_data[0]["name"]
+            
             st.session_state.form_version += 1
             st.session_state.personal_rows = 1
-            st.session_state.group_rows = 1 # 送信後に団体の立数もリセットする
-            st.session_state.success_msg = "✅ クラウド保存完了！ 全ての入力をリセットしました。"
+            st.session_state.group_rows = 1
+            st.session_state.success_msg = "✅ クラウド保存完了！ （名前以外の入力をリセットしました）"
             st.rerun()
         except Exception as e: st.error(f"保存失敗: {e}")
 
