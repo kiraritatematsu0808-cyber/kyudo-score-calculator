@@ -232,20 +232,9 @@ if st.button("クラウドからデータを取得して分析"):
             u_df = df[df['氏名'] == target_user].copy()
             if not u_df.empty:
                 
-                # ▼▼▼ 復活＆進化：直近の記録（履歴）表示 ▼▼▼
                 date_col = u_df.columns[0]
                 u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
                 
-                st.write(f"### 🕒 {target_user} さんの直近の記録（最新10件）")
-                # 新しい順に並べ替えて上から10件を取得
-                recent_df = u_df.sort_values(by=date_col, ascending=False).head(10).copy()
-                recent_df[date_col] = recent_df[date_col].dt.strftime('%Y-%m-%d %H:%M') # 時間を見やすく
-                
-                # Streamlitの綺麗な表で表示（インデックス番号は隠す）
-                st.dataframe(recent_df, use_container_width=True, hide_index=True)
-                
-                st.divider()
-
                 # ▼▼▼ 月的表（月間成績）の自動集計 ▼▼▼
                 u_df['年月'] = u_df[date_col].dt.strftime('%Y年%m月')
                 
@@ -294,7 +283,7 @@ if st.button("クラウドからデータを取得して分析"):
                 st.divider()
 
                 # ▼▼▼ 既存の処理（全期間の総合成績） ▼▼▼
-                tachi_df = u_df[u_df['練習種別'] == '立ち']
+                tachi_df = u_df[u_df['練習種別'] == '立ち'].copy()
                 
                 # 全体統計
                 hits = 0; total = 0
@@ -312,6 +301,15 @@ if st.button("クラウドからデータを取得して分析"):
                     if tachi_df.empty:
                         st.info("「立ち」のデータがありません。")
                     else:
+                        # ▼▼▼ 新機能：立ちだけの直近5件を表示 ▼▼▼
+                        st.write("#### 🕒 直近の「立ち」記録（最新5件）")
+                        recent_tachi_df = tachi_df.sort_values(by=date_col, ascending=False).head(5).copy()
+                        recent_tachi_df[date_col] = recent_tachi_df[date_col].dt.strftime('%Y-%m-%d %H:%M')
+                        st.dataframe(recent_tachi_df, use_container_width=True, hide_index=True)
+                        
+                        st.divider()
+                        # ▲▲▲ ここまで ▲▲▲
+
                         t_hits = 0; t_total = 0
                         arrow_stats = {"一本目": [0,0], "二本目": [0,0], "三本目": [0,0], "四本目": [0,0]}
                         for _, row in tachi_df.iterrows():
