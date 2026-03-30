@@ -218,8 +218,42 @@ if st.button("クラウドからデータを取得して分析"):
         sheet = doc.worksheet("記録") # 「記録」シートから読み込み！
         df = pd.DataFrame(sheet.get_all_records())
         if not df.empty:
-            u_df = df[df['氏名'] == target_user]
+            u_df = df[df['氏名'] == target_user].copy() # 安全に処理するためコピーを作成
             if not u_df.empty:
+                
+                # ▼▼▼ 新機能：月的表（月間成績）の自動集計 ▼▼▼
+                date_col = u_df.columns[0] # スプレッドシートのA列（日時）を取得
+                u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
+                u_df['年月'] = u_df[date_col].dt.strftime('%Y年%m月')
+                
+                st.write(f"### 📅 {target_user} さんの月的表")
+                # 存在する月を新しい順に並べる
+                available_months = sorted(u_df['年月'].dropna().unique(), reverse=True)
+                
+                if available_months:
+                    for month in available_months:
+                        m_df = u_df[u_df['年月'] == month]
+                        m_hits = 0; m_total = 0
+                        for col in ["一本目", "二本目", "三本目", "四本目"]:
+                            m_hits += (m_df[col] == "○").sum()
+                            m_total += (m_df[col] == "○").sum() + (m_df[col] == "×").sum()
+                        
+                        m_rate = (m_hits / m_total * 100) if m_total > 0 else 0
+                        
+                        # 一番新しい月だけ最初から開いておく（アコーディオン機能）
+                        with st.expander(f"📌 {month} の成績: {m_hits}中 / {m_total}本 (的中率: {m_rate:.1f}%)", expanded=(month == available_months[0])):
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("月間引数", f"{m_total}本")
+                            c2.metric("月間的中", f"{m_hits}本")
+                            c3.metric("月間的中率", f"{m_rate:.1f}%")
+                else:
+                    st.info("月ごとのデータがまだありません。")
+                
+                st.divider()
+                # ▲▲▲ ここまで新機能 ▲▲▲
+
+
+                # ▼▼▼ 既存の処理（絶対に消さない・全期間の総合成績） ▼▼▼
                 tachi_df = u_df[u_df['練習種別'] == '立ち']
                 
                 # 全体統計
@@ -228,7 +262,7 @@ if st.button("クラウドからデータを取得して分析"):
                     hits += (u_df[col] == "○").sum()
                     total += (u_df[col] == "○").sum() + (u_df[col] == "×").sum()
                 
-                st.write(f"#### {target_user} さんの総合成績")
+                st.write(f"#### {target_user} さんの総合成績（全期間）")
                 m1, m2, m3 = st.columns(3)
                 m1.metric("総引数", f"{total}本")
                 m2.metric("総的中", f"{hits}本")
