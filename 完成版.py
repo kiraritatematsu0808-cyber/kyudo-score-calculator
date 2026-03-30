@@ -232,9 +232,21 @@ if st.button("クラウドからデータを取得して分析"):
             u_df = df[df['氏名'] == target_user].copy()
             if not u_df.empty:
                 
-                # ▼▼▼ 月的表（月間成績）の自動集計 ▼▼▼
+                # ▼▼▼ 復活＆進化：直近の記録（履歴）表示 ▼▼▼
                 date_col = u_df.columns[0]
                 u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
+                
+                st.write(f"### 🕒 {target_user} さんの直近の記録（最新10件）")
+                # 新しい順に並べ替えて上から10件を取得
+                recent_df = u_df.sort_values(by=date_col, ascending=False).head(10).copy()
+                recent_df[date_col] = recent_df[date_col].dt.strftime('%Y-%m-%d %H:%M') # 時間を見やすく
+                
+                # Streamlitの綺麗な表で表示（インデックス番号は隠す）
+                st.dataframe(recent_df, use_container_width=True, hide_index=True)
+                
+                st.divider()
+
+                # ▼▼▼ 月的表（月間成績）の自動集計 ▼▼▼
                 u_df['年月'] = u_df[date_col].dt.strftime('%Y年%m月')
                 
                 st.write(f"### 📅 {target_user} さんの月的表")
