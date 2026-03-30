@@ -218,42 +218,59 @@ if st.button("クラウドからデータを取得して分析"):
         sheet = doc.worksheet("記録") # 「記録」シートから読み込み！
         df = pd.DataFrame(sheet.get_all_records())
         if not df.empty:
-            u_df = df[df['氏名'] == target_user].copy() # 安全に処理するためコピーを作成
+            u_df = df[df['氏名'] == target_user].copy()
             if not u_df.empty:
                 
-                # ▼▼▼ 新機能：月的表（月間成績）の自動集計 ▼▼▼
-                date_col = u_df.columns[0] # スプレッドシートのA列（日時）を取得
+                # ▼▼▼ 月的表（月間成績）の自動集計 ▼▼▼
+                date_col = u_df.columns[0]
                 u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
                 u_df['年月'] = u_df[date_col].dt.strftime('%Y年%m月')
                 
                 st.write(f"### 📅 {target_user} さんの月的表")
-                # 存在する月を新しい順に並べる
                 available_months = sorted(u_df['年月'].dropna().unique(), reverse=True)
                 
                 if available_months:
                     for month in available_months:
                         m_df = u_df[u_df['年月'] == month]
+                        
+                        # --- 月間：すべての練習の集計 ---
                         m_hits = 0; m_total = 0
                         for col in ["一本目", "二本目", "三本目", "四本目"]:
                             m_hits += (m_df[col] == "○").sum()
                             m_total += (m_df[col] == "○").sum() + (m_df[col] == "×").sum()
-                        
                         m_rate = (m_hits / m_total * 100) if m_total > 0 else 0
                         
-                        # 一番新しい月だけ最初から開いておく（アコーディオン機能）
+                        # --- 月間：「立ち」限定の集計 ---
+                        tachi_m_df = m_df[m_df['練習種別'] == '立ち']
+                        t_m_hits = 0; t_m_total = 0
+                        for col in ["一本目", "二本目", "三本目", "四本目"]:
+                            t_m_hits += (tachi_m_df[col] == "○").sum()
+                            t_m_total += (tachi_m_df[col] == "○").sum() + (tachi_m_df[col] == "×").sum()
+                        t_m_rate = (t_m_hits / t_m_total * 100) if t_m_total > 0 else 0
+
+                        # アコーディオン（一番新しい月だけ開く）
                         with st.expander(f"📌 {month} の成績: {m_hits}中 / {m_total}本 (的中率: {m_rate:.1f}%)", expanded=(month == available_months[0])):
+                            
+                            st.markdown("**◆ 月間総合（すべての練習）**")
                             c1, c2, c3 = st.columns(3)
-                            c1.metric("月間引数", f"{m_total}本")
-                            c2.metric("月間的中", f"{m_hits}本")
-                            c3.metric("月間的中率", f"{m_rate:.1f}%")
+                            c1.metric("総引数 (分母)", f"{m_total}本")
+                            c2.metric("総的中 (分子)", f"{m_hits}本")
+                            c3.metric("総合 的中率", f"{m_rate:.1f}%")
+                            
+                            st.markdown("**◆ 月間「立ち」限定**")
+                            if t_m_total > 0:
+                                tc1, tc2, tc3 = st.columns(3)
+                                tc1.metric("立ち引数 (分母)", f"{t_m_total}本")
+                                tc2.metric("立ち的中 (分子)", f"{t_m_hits}本")
+                                tc3.metric("立ち 的中率", f"{t_m_rate:.1f}%")
+                            else:
+                                st.info("この月の「立ち」のデータはありません。")
                 else:
                     st.info("月ごとのデータがまだありません。")
                 
                 st.divider()
-                # ▲▲▲ ここまで新機能 ▲▲▲
 
-
-                # ▼▼▼ 既存の処理（絶対に消さない・全期間の総合成績） ▼▼▼
+                # ▼▼▼ 既存の処理（全期間の総合成績） ▼▼▼
                 tachi_df = u_df[u_df['練習種別'] == '立ち']
                 
                 # 全体統計
@@ -268,7 +285,7 @@ if st.button("クラウドからデータを取得して分析"):
                 m2.metric("総的中", f"{hits}本")
                 m3.metric("総的中率", f"{(hits/total*100):.1f}%" if total>0 else "0%")
                 
-                with st.expander("🔍 「立ち」練習の詳細を分析"):
+                with st.expander("🔍 「立ち」練習の詳細を分析（全期間）"):
                     if tachi_df.empty:
                         st.info("「立ち」のデータがありません。")
                     else:
