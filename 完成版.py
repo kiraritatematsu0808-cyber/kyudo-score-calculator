@@ -193,7 +193,27 @@ else: # 団体
         st.write("---")
 
 if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
-# ...（以下はそのまま）
+        if "未選択" in [d["name"] for d in all_data]:
+            st.error("名前を選択してください！")
+        else:
+            try:
+                doc = connect_gsheet()
+                sheet = doc.worksheet("記録") # 「記録」シートに保存！
+                
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # 保存時は名前のみ抽出
+                rows = [[now, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
+                sheet.append_rows(rows)
+                
+                # ▼▼▼ 送信した人の名前を「短期記憶」に刻み込む ▼▼▼
+                st.session_state.last_name = all_data[0]["name"]
+                
+                st.session_state.form_version += 1
+                st.session_state.personal_rows = 1
+                st.session_state.group_rows = 1
+                st.session_state.success_msg = "✅ クラウド保存完了！ （名前以外の入力をリセットしました）"
+                st.rerun()
+            except Exception as e: st.error(f"保存失敗: {e}")
 
 # ==========================================
 # 5. 分析エリア（中高・学年不問、立ち限定的中率）
