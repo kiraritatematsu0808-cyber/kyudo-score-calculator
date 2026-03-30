@@ -135,11 +135,11 @@ if app_mode == "個人練習":
     st.subheader("📝 個人練習 記録フォーム")
     col1, col2 = st.columns(2)
     with col1:
-        # ⚠️ 名前だけは人数が増えると「検索」できた方が便利なので、selectboxのまま残します！
+        # 名前は人数が増えると検索できた方が便利なのでselectboxのまま！
         selected_name = st.selectbox("氏名 (学年順)", st.session_state.members, index=get_name_index(), key=f"pn_{st.session_state.form_version}")
     with col2:
-        # ▼▼▼ ハッキング1：「種別」を横並びのボタンに変更 ▼▼▼
-        practice_type = st.radio("種別", ["自主練習", "射込み", "立ち"], horizontal=True, key=f"pt_{st.session_state.form_version}")
+        # ▼▼▼ ハッキング：最新UI「セグメントコントロール」でスタイリッシュに！ ▼▼▼
+        practice_type = st.segmented_control("種別", ["自主練習", "射込み", "立ち"], default="自主練習", key=f"pt_{st.session_state.form_version}")
     
     if "personal_rows" not in st.session_state: st.session_state.personal_rows = 1
     c1, c2, _ = st.columns([1,1,4])
@@ -155,8 +155,8 @@ if app_mode == "個人練習":
         row_res = []
         for a in range(4):
             with cols[a]:
-                # ▼▼▼ ハッキング2：「○/×」を横並びのボタンに変更 ▼▼▼
-                res = st.radio(f"p_{r}_{a}", ["未", "○", "×"], horizontal=True, key=f"p_{r}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
+                # ▼▼▼ ハッキング：○/×もカッコいいブロックボタンに！ ▼▼▼
+                res = st.segmented_control(f"p_{r}_{a}", ["未", "○", "×"], default="未", key=f"p_{r}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
                 row_res.append(res)
         all_data.append({"name": selected_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
 
@@ -186,34 +186,34 @@ else: # 団体
             row_res = []
             for a in range(4):
                 with cols[a+2]:
-                    # ▼▼▼ ハッキング3：団体側の「○/×」も横並びボタンに変更 ▼▼▼
-                    res = st.radio(f"gr_{r}_{i}_{a}", ["未", "○", "×"], horizontal=True, key=f"gr_{r}_{i}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
+                    # ▼▼▼ 団体側の○/×も最新UIに変更 ▼▼▼
+                    res = st.segmented_control(f"gr_{r}_{i}_{a}", ["未", "○", "×"], default="未", key=f"gr_{r}_{i}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
                     row_res.append(res)
             all_data.append({"name": m_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
         st.write("---")
 
 if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
-        if "未選択" in [d["name"] for d in all_data]:
-            st.error("名前を選択してください！")
-        else:
-            try:
-                doc = connect_gsheet()
-                sheet = doc.worksheet("記録") # 「記録」シートに保存！
-                
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # 保存時は名前のみ抽出
-                rows = [[now, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
-                sheet.append_rows(rows)
-                
-                # ▼▼▼ 送信した人の名前を「短期記憶」に刻み込む ▼▼▼
-                st.session_state.last_name = all_data[0]["name"]
-                
-                st.session_state.form_version += 1
-                st.session_state.personal_rows = 1
-                st.session_state.group_rows = 1
-                st.session_state.success_msg = "✅ クラウド保存完了！ （名前以外の入力をリセットしました）"
-                st.rerun()
-            except Exception as e: st.error(f"保存失敗: {e}")
+    if "未選択" in [d["name"] for d in all_data]:
+        st.error("名前を選択してください！")
+    else:
+        try:
+            doc = connect_gsheet()
+            sheet = doc.worksheet("記録") # 「記録」シートに保存！
+            
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # 保存時は名前のみ抽出
+            rows = [[now, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
+            sheet.append_rows(rows)
+            
+            # 送信した人の名前を「短期記憶」に刻み込む
+            st.session_state.last_name = all_data[0]["name"]
+            
+            st.session_state.form_version += 1
+            st.session_state.personal_rows = 1
+            st.session_state.group_rows = 1
+            st.session_state.success_msg = "✅ クラウド保存完了！ （名前以外の入力をリセットしました）"
+            st.rerun()
+        except Exception as e: st.error(f"保存失敗: {e}")
 
 # ==========================================
 # 5. 分析エリア（中高・学年不問、立ち限定的中率）
