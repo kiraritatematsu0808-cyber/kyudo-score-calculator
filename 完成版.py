@@ -88,37 +88,32 @@ st.title("🏹 弓道 的中記録システム [Pro]")
 
 with st.sidebar:
     st.header("🏆 モード選択")
-    app_mode = st.radio("入力モード", ["個人練習", "団体（立ち）"])
+    # ▼ 新しいモード「目標・主眼設定」を追加！
+    app_mode = st.radio("入力モード", ["個人練習", "団体（立ち）", "🎯 目標・主眼設定"])
     st.divider()
     
     st.header("👤 部員管理")
+    # ...（部員追加のコードはそのまま）
     with st.expander("新規部員を追加"):
         col_s, col_g = st.columns(2)
         with col_s: s_type = st.selectbox("区分", ["高校", "中学"], key="stype")
         with col_g: s_grade = st.selectbox("学年", ["1", "2", "3"], key="sgrade")
-        
         new_name = st.text_input("名前", key=f"minp_{st.session_state.form_version}")
-        
         if st.button("メンバー登録"):
             pure_names = [m.split(") ")[-1] if ") " in m else m for m in st.session_state.members]
-            if not new_name:
-                st.warning("名前を入力してください。")
-            elif new_name in pure_names:
-                st.error(f"「{new_name}」さんは登録済みです。")
+            if not new_name: st.warning("名前を入力してください。")
+            elif new_name in pure_names: st.error(f"「{new_name}」さんは登録済みです。")
             else:
                 type_code = "H" if s_type == "高校" else "M"
                 try:
-                    # クラウドの「部員名簿」に直接書き込む！
                     doc = connect_gsheet()
                     sheet_members = doc.worksheet("部員名簿")
                     sheet_members.append_row([type_code, s_grade, new_name])
-                    
-                    st.session_state.success_msg = f"✅ {s_type}{s_grade}年 {new_name} さんをクラウド名簿に追加しました！"
-                    st.session_state.members = load_members() # リストを再取得
+                    st.session_state.success_msg = f"✅ {s_type}{s_grade}年 {new_name} さんを追加しました！"
+                    st.session_state.members = load_members() 
                     st.session_state.form_version += 1
                     st.rerun()
-                except Exception as e:
-                    st.error(f"登録に失敗しました: {e}")
+                except Exception as e: st.error(f"登録失敗: {e}")
 
 # ==========================================
 # 4. メイン入力エリア
@@ -131,14 +126,86 @@ def get_name_index():
         return st.session_state.members.index(st.session_state.last_name)
     return 0
 
-if app_mode == "個人練習":
+# --- A. 目標・主眼設定モード ---
+if app_mode == "🎯 目標・主眼設定":
+    st.subheader("🎯 今月の目標と練習の主眼")
+    
+    col_n, col_m = st.columns(2)
+    with col_n:
+        selected_name = st.selectbox("氏名", st.session_state.members, index=get_name_index(), key="memo_name")
+    
+    # 日本時間の月を取得
+    JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
+    current_month = datetime.datetime.now(JST).strftime("%Y年%m月")
+    
+    with col_m:
+        st.info(f"📅 対象月: {current_month}")
+
+    if selected_name == "未選択":
+        st.warning("名前を選択してください。")
+    else:
+        # 目標と主眼の入力
+        st.write("---")
+        goal = st.text_area("🚀 今月の目標 (例: 的中率4割、皆中を1回以上出す)", placeholder="今月の大きなゴールを書きましょう")
+        focus = st.text_area("🔍 練習の主眼 / 意識すること (例: 大三で右肘を高く、離れで緩まない)", placeholder="技術的な注意点や、日々の練習で意識することを書きましょう")
+        
+        if st.button("💾 目標をクラウドに保存・更新", type="primary", use_container_width=True):
+            try:
+                doc = connect_gsheet()
+                # シートがなければ作成
+                try:
+                    sheet_memo = doc.worksheet("目標メモ")
+                except:
+                    sheet_memo = doc.add_worksheet(title="目標メモ", rows="1000", cols="10")
+                    sheet_memo.append_row(["年月", "氏名", "今月の目標", "練習の主眼"])
+                
+                # 保存（同じ月のデータがあれば上書き、なければ追加）
+                records = sheet_memo.get_all_records()
+                pure_target_name = selected_name.split(") ")[-1]
+                
+                # 既存データの検索
+                found_row = -1
+                for i, rec in enumerate(records):
+                    if rec["年月"] == current_month and rec["氏名"] == pure_target_name:
+                        found_row = i + 2 # ヘッダー分+1
+                        break
+                
+                if found_row != -1:
+                    sheet_memo.update_cell(found_row, 3, goal)
+                    sheet_memo.update_cell(found_row, 4, focus)
+                else:
+                    sheet_memo.append_row([current_month, pure_target_name, goal, focus])
+                
+                st.session_state.last_name = selected_name
+                st.success(f"✅ {current_month} の目標を保存しました！")
+            except Exception as e:
+                st.error(f"保存失敗: {e}")
+
+        # --- 過去の目標を表示 ---
+        st.write("---")
+        st.subheader("📚 過去の目標・メモ履歴")
+        try:
+            doc = connect_gsheet()
+            sheet_memo = doc.worksheet("目標メモ")
+            all_memos = pd.DataFrame(sheet_memo.get_all_records())
+            if not all_memos.empty:
+                user_memos = all_memos[all_memos['氏名'] == selected_name.split(") ")[-1]].sort_values("年月", ascending=False)
+                if not user_memos.empty:
+                    for _, row in user_memos.iterrows():
+                        with st.expander(f"📌 {row['年月']} の目標"):
+                            st.write(f"**【今月の目標】**\n{row['今月の目標']}")
+                            st.write(f"**【練習の主眼】**\n{row['練習の主眼']}")
+                else: st.info("過去の履歴はありません。")
+        except: st.info("履歴データがまだありません。")
+
+# --- B. 個人練習モード ---
+elif app_mode == "個人練習":
+    # ...（以前の個人練習コードをそのままここに。segmented_control版）
     st.subheader("📝 個人練習 記録フォーム")
     col1, col2 = st.columns(2)
     with col1:
-        # 名前は人数が増えると検索できた方が便利なのでselectboxのまま！
         selected_name = st.selectbox("氏名 (学年順)", st.session_state.members, index=get_name_index(), key=f"pn_{st.session_state.form_version}")
     with col2:
-        # ▼▼▼ ハッキング：最新UI「セグメントコントロール」でスタイリッシュに！ ▼▼▼
         practice_type = st.segmented_control("種別", ["自主練習", "射込み", "立ち"], default="自主練習", key=f"pt_{st.session_state.form_version}")
     
     if "personal_rows" not in st.session_state: st.session_state.personal_rows = 1
@@ -155,12 +222,13 @@ if app_mode == "個人練習":
         row_res = []
         for a in range(4):
             with cols[a]:
-                # ▼▼▼ ハッキング：○/×もカッコいいブロックボタンに！ ▼▼▼
                 res = st.segmented_control(f"p_{r}_{a}", ["未", "○", "×"], default="未", key=f"p_{r}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
                 row_res.append(res)
         all_data.append({"name": selected_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
 
-else: # 団体
+# --- C. 団体モード ---
+else: 
+    # ...（以前の団体モードコードをそのままここに。segmented_control版）
     st.subheader("👥 団体（立ち） 記録フォーム")
     num_members = st.sidebar.number_input("立ちの人数", min_value=2, max_value=6, value=3)
     practice_type = "立ち"
@@ -186,48 +254,40 @@ else: # 団体
             row_res = []
             for a in range(4):
                 with cols[a+2]:
-                    # ▼▼▼ 団体側の○/×も最新UIに変更 ▼▼▼
                     res = st.segmented_control(f"gr_{r}_{i}_{a}", ["未", "○", "×"], default="未", key=f"gr_{r}_{i}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
                     row_res.append(res)
             all_data.append({"name": m_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
         st.write("---")
 
-if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
-    if "未選択" in [d["name"] for d in all_data]:
-        st.error("名前を選択してください！")
-    else:
-        try:
-            doc = connect_gsheet()
-            
-            # ▼▼▼ ハッキング：サーバーの時間を日本時間（JST: +9時間）に強制補正！ ▼▼▼
-            JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
-            now = datetime.datetime.now(JST)
-            
-            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-            sheet_title = now.strftime("%Y年%m月") # 例: 2026年03月
-            
-            # ▼▼▼ 新機能：月ごとのシートを自動判別＆作成 ▼▼▼
+# 送信ボタン（目標モードの時は表示しないようにする）
+if app_mode != "🎯 目標・主眼設定":
+    if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
+        # ...（以前の送信保存コードをそのままここに。JST対応版）
+        if "未選択" in [d["name"] for d in all_data]:
+            st.error("名前を選択してください！")
+        else:
             try:
-                sheet = doc.worksheet(sheet_title)
-            except gspread.WorksheetNotFound:
-                # シートが無ければ自動で作成！
-                sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
-                # 一番上の見出し（ヘッダー）も自動で書き込む
-                sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
-            
-            # 保存時は名前のみ抽出
-            rows = [[now_str, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
-            sheet.append_rows(rows)
-            
-            # 送信した人の名前を「短期記憶」に刻み込む
-            st.session_state.last_name = all_data[0]["name"]
-            
-            st.session_state.form_version += 1
-            st.session_state.personal_rows = 1
-            st.session_state.group_rows = 1
-            st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title} シートに記録しました)"
-            st.rerun()
-        except Exception as e: st.error(f"保存失敗: {e}")
+                doc = connect_gsheet()
+                JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
+                now = datetime.datetime.now(JST)
+                now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                sheet_title = now.strftime("%Y年%m月")
+                
+                try:
+                    sheet = doc.worksheet(sheet_title)
+                except:
+                    sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
+                    sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
+                
+                rows = [[now_str, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
+                sheet.append_rows(rows)
+                st.session_state.last_name = all_data[0]["name"]
+                st.session_state.form_version += 1
+                st.session_state.personal_rows = 1
+                st.session_state.group_rows = 1
+                st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title})"
+                st.rerun()
+            except Exception as e: st.error(f"保存失敗: {e}")
 
 # ==========================================
 # 5. 分析エリア（中高・学年不問、立ち限定的中率）
