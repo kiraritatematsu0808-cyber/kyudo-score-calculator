@@ -270,35 +270,6 @@ else:
             all_data.append({"name": m_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
         st.write("---")
 
-# 送信ボタン（目標モードの時は表示しないようにする）
-if app_mode != "🎯 目標・主眼設定":
-    if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
-        # ...（以前の送信保存コードをそのままここに。JST対応版）
-        if "未選択" in [d["name"] for d in all_data]:
-            st.error("名前を選択してください！")
-        else:
-            try:
-                doc = connect_gsheet()
-                JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
-                now = datetime.datetime.now(JST)
-                now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-                sheet_title = now.strftime("%Y年%m月")
-                
-                try:
-                    sheet = doc.worksheet(sheet_title)
-                except:
-                    sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
-                    sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
-                
-                rows = [[now_str, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
-                sheet.append_rows(rows)
-                st.session_state.last_name = all_data[0]["name"]
-                st.session_state.form_version += 1
-                st.session_state.personal_rows = 1
-                st.session_state.group_rows = 1
-                st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title})"
-                st.rerun()
-            except Exception as e: st.error(f"保存失敗: {e}")
 
 # --- D. 的中率グラフ モード ---
 elif app_mode == "📊 的中率グラフ":
@@ -382,7 +353,6 @@ elif app_mode == "📊 的中率グラフ":
             st.error(f"グラフ生成エラー: {e}")
 
 # ▼ ここから下は今まで通り ▼
-# 送信ボタン（目標モードとグラフモードの時は表示しないようにする）
 # 送信ボタン（目標モードとグラフモードの時は表示しないようにする）
 if app_mode not in ["🎯 目標・課題メモ", "📊 的中率グラフ"]:
     if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
