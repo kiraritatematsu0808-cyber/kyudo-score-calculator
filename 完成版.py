@@ -383,9 +383,42 @@ elif app_mode == "📊 的中率グラフ":
 
 # ▼ ここから下は今まで通り ▼
 # 送信ボタン（目標モードとグラフモードの時は表示しないようにする）
+# 送信ボタン（目標モードとグラフモードの時は表示しないようにする）
 if app_mode not in ["🎯 目標・課題メモ", "📊 的中率グラフ"]:
     if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
-# ...
+        if "未選択" in [d["name"] for d in all_data]:
+            st.error("名前を選択してください！")
+        else:
+            try:
+                doc = connect_gsheet()
+                
+                # 日本時間（JST: +9時間）に強制補正
+                JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
+                now = datetime.datetime.now(JST)
+                now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                sheet_title = now.strftime("%Y年%m月") # 例: 2026年03月
+                
+                # 月ごとのシートを自動判別＆作成
+                try:
+                    sheet = doc.worksheet(sheet_title)
+                except:
+                    sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
+                    sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
+                
+                # 保存時は名前のみ抽出
+                rows = [[now_str, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
+                sheet.append_rows(rows)
+                
+                # 送信した人の名前を「短期記憶」に刻み込む
+                st.session_state.last_name = all_data[0]["name"]
+                
+                st.session_state.form_version += 1
+                st.session_state.personal_rows = 1
+                st.session_state.group_rows = 1
+                st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title} シートに記録しました)"
+                st.rerun()
+            except Exception as e:
+                st.error(f"保存失敗: {e}")
 
 # ==========================================
 # 5. 分析エリア（中高・学年不問、立ち限定的中率）
