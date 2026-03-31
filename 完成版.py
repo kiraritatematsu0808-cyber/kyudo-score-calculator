@@ -88,12 +88,12 @@ st.title("🏹 弓道 的中記録システム [Pro]")
 
 with st.sidebar:
     st.header("🏆 モード選択")
-    # ▼ 新しいモード「目標・主眼設定」を追加！
-    app_mode = st.radio("入力モード", ["個人練習", "団体（立ち）", "🎯 目標・主眼設定"])
+    # ▼ モード名を分かりやすく変更！
+    app_mode = st.radio("入力モード", ["個人練習", "団体（立ち）", "🎯 目標・課題メモ"])
     st.divider()
     
     st.header("👤 部員管理")
-    # ...（部員追加のコードはそのまま）
+    # ...（ここはそのまま！）...
     with st.expander("新規部員を追加"):
         col_s, col_g = st.columns(2)
         with col_s: s_type = st.selectbox("区分", ["高校", "中学"], key="stype")
@@ -126,15 +126,14 @@ def get_name_index():
         return st.session_state.members.index(st.session_state.last_name)
     return 0
 
-# --- A. 目標・主眼設定モード ---
-if app_mode == "🎯 目標・主眼設定":
-    st.subheader("🎯 今月の目標と練習の主眼")
+# --- A. 目標・課題メモ モード ---
+if app_mode == "🎯 目標・課題メモ":
+    st.subheader("🎯 今月の目標と課題")
     
     col_n, col_m = st.columns(2)
     with col_n:
         selected_name = st.selectbox("氏名", st.session_state.members, index=get_name_index(), key="memo_name")
     
-    # 日本時間の月を取得
     JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
     current_month = datetime.datetime.now(JST).strftime("%Y年%m月")
     
@@ -144,30 +143,29 @@ if app_mode == "🎯 目標・主眼設定":
     if selected_name == "未選択":
         st.warning("名前を選択してください。")
     else:
-        # 目標と主眼の入力
         st.write("---")
         goal = st.text_area("🚀 今月の目標 (例: 的中率4割、皆中を1回以上出す)", placeholder="今月の大きなゴールを書きましょう")
-        focus = st.text_area("🔍 練習の主眼 / 意識すること (例: 大三で右肘を高く、離れで緩まない)", placeholder="技術的な注意点や、日々の練習で意識することを書きましょう")
+        
+        # ▼ 「主眼」を「今月の課題・意識すること」に変更！
+        focus = st.text_area("🔍 今月の課題・意識すること (例: 大三で右肘を高く、離れで緩まない)", placeholder="技術的な注意点や、日々の練習で意識することを書きましょう")
         
         if st.button("💾 目標をクラウドに保存・更新", type="primary", use_container_width=True):
             try:
                 doc = connect_gsheet()
-                # シートがなければ作成
                 try:
                     sheet_memo = doc.worksheet("目標メモ")
                 except:
                     sheet_memo = doc.add_worksheet(title="目標メモ", rows="1000", cols="10")
-                    sheet_memo.append_row(["年月", "氏名", "今月の目標", "練習の主眼"])
+                    # 見出しも「課題・意識すること」に変更
+                    sheet_memo.append_row(["年月", "氏名", "今月の目標", "課題・意識すること"])
                 
-                # 保存（同じ月のデータがあれば上書き、なければ追加）
                 records = sheet_memo.get_all_records()
                 pure_target_name = selected_name.split(") ")[-1]
                 
-                # 既存データの検索
                 found_row = -1
                 for i, rec in enumerate(records):
                     if rec["年月"] == current_month and rec["氏名"] == pure_target_name:
-                        found_row = i + 2 # ヘッダー分+1
+                        found_row = i + 2
                         break
                 
                 if found_row != -1:
@@ -181,7 +179,6 @@ if app_mode == "🎯 目標・主眼設定":
             except Exception as e:
                 st.error(f"保存失敗: {e}")
 
-        # --- 過去の目標を表示 ---
         st.write("---")
         st.subheader("📚 過去の目標・メモ履歴")
         try:
@@ -194,9 +191,12 @@ if app_mode == "🎯 目標・主眼設定":
                     for _, row in user_memos.iterrows():
                         with st.expander(f"📌 {row['年月']} の目標"):
                             st.write(f"**【今月の目標】**\n{row['今月の目標']}")
-                            st.write(f"**【練習の主眼】**\n{row['練習の主眼']}")
+                            # 履歴の表示名も変更（※古いデータはキーエラーになるのを防ぐため両方対応）
+                            focus_text = row.get('課題・意識すること', row.get('練習の主眼', ''))
+                            st.write(f"**【課題・意識すること】**\n{focus_text}")
                 else: st.info("過去の履歴はありません。")
         except: st.info("履歴データがまだありません。")
+
 
 # --- B. 個人練習モード ---
 elif app_mode == "個人練習":
