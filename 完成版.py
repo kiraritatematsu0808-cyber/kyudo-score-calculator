@@ -76,23 +76,26 @@ if "members" not in st.session_state:
 # ==========================================
 st.set_page_config(page_title="弓道 的中Pro", layout="wide")
 
-# ▼▼▼ スマホUIハッキング：ボタンを大きく押しやすくする魔法（最強版） ▼▼▼
+# ▼▼▼ スマホ・iPad両対応：ボタンを綺麗に大きくする魔法（修正版） ▼▼▼
 st.markdown("""
 <style>
-/* Streamlitの頑固なデザイン設定を貫通して文字と枠をデカくする */
-div[data-testid="stSegmentedControl"] * {
-    font-size: 18px !important;
-    font-weight: bold !important;
-}
-div[data-testid="stSegmentedControl"] label {
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
-}
-/* さらに、全体を1.15倍に拡大してしまうという力技 */
+/* ボタンの横幅を固定せず、中身に合わせて広げる */
 div[data-testid="stSegmentedControl"] {
-    transform: scale(1.15);
-    transform-origin: left center;
-    margin-bottom: 15px;
+    width: 100% !important;
+    min-width: 250px !important;
+}
+
+/* ボタンの中の文字を大きく、太くする */
+div[data-testid="stSegmentedControl"] button {
+    font-size: 20px !important;
+    font-weight: bold !important;
+    min-height: 50px !important; /* ボタンの高さを出す */
+}
+
+/* 選択肢（未・○・×）が横一列に並ぶように強制する */
+div[data-testid="stSegmentedControl"] div[role="radiogroup"] {
+    display: flex !important;
+    flex-wrap: nowrap !important;
 }
 </style>
 """, unsafe_allow_html=True)
