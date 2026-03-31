@@ -307,7 +307,8 @@ elif app_mode == "📊 的中率グラフ":
                     if not res_df.empty:
                         st.write(f"### 📈 {target_user} さんの {time_unit} 的中率推移")
                         
-                        chart = alt.Chart(res_df).mark_bar(color='#FF4B4B', cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                        # ▼ mark_bar を mark_line(point=True) に変更！線の太さも調整！
+                        chart = alt.Chart(res_df).mark_line(color='#FF4B4B', point=True, strokeWidth=3).encode(
                             x=alt.X('期間:N', title=time_unit),
                             y=alt.Y('的中率(%):Q', title='的中率 (%)', scale=alt.Scale(domain=[0, 100])),
                             tooltip=['期間', '的中率(%)', '的中数', '総引数']
