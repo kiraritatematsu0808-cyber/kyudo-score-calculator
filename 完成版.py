@@ -128,7 +128,7 @@ def get_name_index():
 
 # --- A. 目標・課題メモ モード ---
 if app_mode == "🎯 目標・課題メモ":
-    st.subheader("🎯 今月の目標と課題")
+    st.subheader("🎯 今月の目標・課題・指導メモ")
     
     col_n, col_m = st.columns(2)
     with col_n:
@@ -144,20 +144,24 @@ if app_mode == "🎯 目標・課題メモ":
         st.warning("名前を選択してください。")
     else:
         st.write("---")
-        goal = st.text_area("🚀 今月の目標 (例: 的中率4割、皆中を1回以上出す)", placeholder="今月の大きなゴールを書きましょう")
+        # 1. 今月の目標
+        goal = st.text_area("🚀 今月の目標", placeholder="例: 的中率4割、皆中を1回以上出す", key="goal_input")
         
-        # ▼ 「主眼」を「今月の課題・意識すること」に変更！
-        focus = st.text_area("🔍 今月の課題・意識すること (例: 大三で右肘を高く、離れで緩まない)", placeholder="技術的な注意点や、日々の練習で意識することを書きましょう")
+        # 2. 今月の課題
+        focus = st.text_area("🔍 今月の課題・意識すること", placeholder="例: 大三で右肘を高く、離れで緩まない", key="focus_input")
         
-        if st.button("💾 目標をクラウドに保存・更新", type="primary", use_container_width=True):
+        # ▼▼▼ 3. 新機能：監督コーチからの指導 ▼▼▼
+        advice = st.text_area("🗣️ 監督コーチに指導されたこと", placeholder="例: 引き分けで肩が上がっている、もっと妻手を遠くに通して", key="advice_input")
+        
+        if st.button("💾 クラウドに保存・更新", type="primary", use_container_width=True):
             try:
                 doc = connect_gsheet()
                 try:
                     sheet_memo = doc.worksheet("目標メモ")
                 except:
                     sheet_memo = doc.add_worksheet(title="目標メモ", rows="1000", cols="10")
-                    # 見出しも「課題・意識すること」に変更
-                    sheet_memo.append_row(["年月", "氏名", "今月の目標", "課題・意識すること"])
+                    # 見出しに「監督コーチからの指導」を追加
+                    sheet_memo.append_row(["年月", "氏名", "今月の目標", "課題・意識すること", "監督コーチからの指導"])
                 
                 records = sheet_memo.get_all_records()
                 pure_target_name = selected_name.split(") ")[-1]
@@ -171,16 +175,18 @@ if app_mode == "🎯 目標・課題メモ":
                 if found_row != -1:
                     sheet_memo.update_cell(found_row, 3, goal)
                     sheet_memo.update_cell(found_row, 4, focus)
+                    sheet_memo.update_cell(found_row, 5, advice) # 5列目に保存
                 else:
-                    sheet_memo.append_row([current_month, pure_target_name, goal, focus])
+                    sheet_memo.append_row([current_month, pure_target_name, goal, focus, advice])
                 
                 st.session_state.last_name = selected_name
-                st.success(f"✅ {current_month} の目標を保存しました！")
+                st.success(f"✅ {current_month} の記録を保存しました！")
             except Exception as e:
                 st.error(f"保存失敗: {e}")
 
+        # --- 履歴表示エリア ---
         st.write("---")
-        st.subheader("📚 過去の目標・メモ履歴")
+        st.subheader("📚 過去の目標・指導履歴")
         try:
             doc = connect_gsheet()
             sheet_memo = doc.worksheet("目標メモ")
@@ -189,14 +195,16 @@ if app_mode == "🎯 目標・課題メモ":
                 user_memos = all_memos[all_memos['氏名'] == selected_name.split(") ")[-1]].sort_values("年月", ascending=False)
                 if not user_memos.empty:
                     for _, row in user_memos.iterrows():
-                        with st.expander(f"📌 {row['年月']} の目標"):
-                            st.write(f"**【今月の目標】**\n{row['今月の目標']}")
-                            # 履歴の表示名も変更（※古いデータはキーエラーになるのを防ぐため両方対応）
-                            focus_text = row.get('課題・意識すること', row.get('練習の主眼', ''))
-                            st.write(f"**【課題・意識すること】**\n{focus_text}")
+                        with st.expander(f"📌 {row['年月']} の記録"):
+                            st.write(f"**【今月の目標】**\n{row.get('今月の目標', '-')}")
+                            # 以前の項目名（練習の主眼）にも対応できるよう get を使用
+                            f_text = row.get('課題・意識すること', row.get('練習の主眼', '-'))
+                            st.write(f"**【課題・意識すること】**\n{f_text}")
+                            # コーチの指導を表示
+                            a_text = row.get('監督コーチからの指導', '-')
+                            st.write(f"**【監督コーチに指導されたこと】**\n{a_text}")
                 else: st.info("過去の履歴はありません。")
         except: st.info("履歴データがまだありません。")
-
 
 # --- B. 個人練習モード ---
 elif app_mode == "個人練習":
