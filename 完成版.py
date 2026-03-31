@@ -191,9 +191,26 @@ if app_mode == "🎯 目標・課題メモ":
 # --- B. 個人練習モード ---
 elif app_mode == "📝 個人練習":
     st.subheader("📝 個人練習 記録フォーム")
-    col1, col2 = st.columns(2)
-    with col1: selected_name = st.selectbox("氏名 (学年順)", st.session_state.members, index=get_name_index(), key=f"pn_{st.session_state.form_version}")
-    with col2: practice_type = st.segmented_control("種別", ["自主練習", "射込み", "立ち"], default="自主練習", key=f"pt_{st.session_state.form_version}")
+    
+    # ▼▼▼ 2段階選択ハッキング：学年で絞り込む ▼▼▼
+    col_g, col_n, col_t = st.columns([1.2, 2, 2]) # 画面を3つに分割！
+    with col_g:
+        # メンバーリストから「(高2)」などの学年タグだけを自動で抽出
+        grades = ["すべて"] + sorted(list(set([m.split(")")[0] + ")" for m in st.session_state.members if m != "未選択"])))
+        selected_grade = st.selectbox("学年フィルター", grades, key=f"pg_{st.session_state.form_version}")
+        
+    with col_n:
+        # 選んだ学年だけを残す（「すべて」なら全員表示）
+        if selected_grade == "すべて":
+            filtered_members = st.session_state.members
+        else:
+            filtered_members = ["未選択"] + [m for m in st.session_state.members if m.startswith(selected_grade)]
+        
+        selected_name = st.selectbox("氏名", filtered_members, key=f"pn_{st.session_state.form_version}")
+        
+    with col_t:
+        practice_type = st.segmented_control("種別", ["自主練習", "射込み", "立ち"], default="自主練習", key=f"pt_{st.session_state.form_version}")
+    # ▲▲▲ ここまで ▲▲▲
     
     if "personal_rows" not in st.session_state: st.session_state.personal_rows = 1
     c1, c2, _ = st.columns([1,1,4])
