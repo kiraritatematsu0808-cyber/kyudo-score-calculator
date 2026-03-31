@@ -198,11 +198,25 @@ if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_co
     else:
         try:
             doc = connect_gsheet()
-            sheet = doc.worksheet("記録") # 「記録」シートに保存！
             
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # ▼▼▼ ハッキング：サーバーの時間を日本時間（JST: +9時間）に強制補正！ ▼▼▼
+            JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
+            now = datetime.datetime.now(JST)
+            
+            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            sheet_title = now.strftime("%Y年%m月") # 例: 2026年03月
+            
+            # ▼▼▼ 新機能：月ごとのシートを自動判別＆作成 ▼▼▼
+            try:
+                sheet = doc.worksheet(sheet_title)
+            except gspread.WorksheetNotFound:
+                # シートが無ければ自動で作成！
+                sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
+                # 一番上の見出し（ヘッダー）も自動で書き込む
+                sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
+            
             # 保存時は名前のみ抽出
-            rows = [[now, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
+            rows = [[now_str, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
             sheet.append_rows(rows)
             
             # 送信した人の名前を「短期記憶」に刻み込む
@@ -211,7 +225,7 @@ if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_co
             st.session_state.form_version += 1
             st.session_state.personal_rows = 1
             st.session_state.group_rows = 1
-            st.session_state.success_msg = "✅ クラウド保存完了！ （名前以外の入力をリセットしました）"
+            st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title} シートに記録しました)"
             st.rerun()
         except Exception as e: st.error(f"保存失敗: {e}")
 
@@ -226,14 +240,28 @@ target_user = target_user_full.split(") ")[-1]
 if st.button("クラウドからデータを取得して分析"):
     try:
         doc = connect_gsheet()
-        sheet = doc.worksheet("記録") # 「記録」シートから読み込み！
-        df = pd.DataFrame(sheet.get_all_records())
+        
+        # ▼▼▼ 新機能：「部員名簿」以外の全シートを読み込んで合体 ▼▼▼
+        all_records = []
+        for ws in doc.worksheets():
+            if ws.title != "部員名簿":
+                try:
+                    records = ws.get_all_records()
+                    all_records.extend(records)
+                except:
+                    pass # 空のシートやエラーのシートは無視する
+                    
+        df = pd.DataFrame(all_records)
+        
         if not df.empty:
             u_df = df[df['氏名'] == target_user].copy()
             if not u_df.empty:
                 
                 date_col = u_df.columns[0]
                 u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
+                
+                # ▼▼▼ 月的表（月間成績）の自動集計 ▼▼▼
+                # ...（ここから下は今までと全く同じです！）
                 
                 # ▼▼▼ 月的表（月間成績）の自動集計 ▼▼▼
                 u_df['年月'] = u_df[date_col].dt.strftime('%Y年%m月')
