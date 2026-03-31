@@ -76,29 +76,6 @@ if "members" not in st.session_state:
 # ==========================================
 st.set_page_config(page_title="弓道 的中Pro", layout="wide")
 
-# ▼▼▼ スマホ・iPad両対応：ボタンを綺麗に大きくする魔法（修正版） ▼▼▼
-st.markdown("""
-<style>
-/* ボタンの横幅を固定せず、中身に合わせて広げる */
-div[data-testid="stSegmentedControl"] {
-    width: 100% !important;
-    min-width: 250px !important;
-}
-
-/* ボタンの中の文字を大きく、太くする */
-div[data-testid="stSegmentedControl"] button {
-    font-size: 20px !important;
-    font-weight: bold !important;
-    min-height: 50px !important; /* ボタンの高さを出す */
-}
-
-/* 選択肢（未・○・×）が横一列に並ぶように強制する */
-div[data-testid="stSegmentedControl"] div[role="radiogroup"] {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 if "success_msg" in st.session_state:
     st.success(st.session_state.success_msg)
