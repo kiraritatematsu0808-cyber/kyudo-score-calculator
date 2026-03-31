@@ -309,8 +309,8 @@ elif app_mode == "📅 予定表・欠席連絡":
     with col1:
         st.write("#### 📆 今月の予定表")
         try:
-            # 同じフォルダにある schedule.jpeg を読み込んで表示
-            img = Image.open("schedule.jpeg")
+            # 同じフォルダにある schedule.jpg を読み込んで表示
+            img = Image.open("schedule.jpg")
             st.image(img, use_container_width=True)
         except:
             st.warning("⚠️ 予定表の画像（schedule.jpeg）が見つかりません。VS Codeの左側にドラッグ＆ドロップして入れてください。")
