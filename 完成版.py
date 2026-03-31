@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 import pandas as pd
 import os
+import altair as alt
 
 # ==========================================
 # 1. 接続設定
@@ -88,9 +89,10 @@ st.title("🏹 弓道 的中記録システム [Pro]")
 
 with st.sidebar:
     st.header("🏆 モード選択")
-    # ▼ モード名を分かりやすく変更！
-    app_mode = st.radio("入力モード", ["個人練習", "団体（立ち）", "🎯 目標・課題メモ"])
+    # ▼ 新しいモード「📊 的中率グラフ」を追加！
+    app_mode = st.radio("入力モード", ["個人練習", "団体（立ち）", "🎯 目標・課題メモ", "📊 的中率グラフ"])
     st.divider()
+    # ...（以下はそのまま）...
     
     st.header("👤 部員管理")
     # ...（ここはそのまま！）...
@@ -206,6 +208,7 @@ if app_mode == "🎯 目標・課題メモ":
                 else: st.info("過去の履歴はありません。")
         except: st.info("履歴データがまだありません。")
 
+
 # --- B. 個人練習モード ---
 elif app_mode == "個人練習":
     # ...（以前の個人練習コードをそのままここに。segmented_control版）
@@ -296,6 +299,93 @@ if app_mode != "🎯 目標・主眼設定":
                 st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title})"
                 st.rerun()
             except Exception as e: st.error(f"保存失敗: {e}")
+
+# --- D. 的中率グラフ モード ---
+elif app_mode == "📊 的中率グラフ":
+    st.subheader("📊 的中率推移グラフ")
+    
+    col_u, col_t = st.columns(2)
+    with col_u:
+        target_user_full = st.selectbox("分析したい人を選択", st.session_state.members, key="graph_user")
+        target_user = target_user_full.split(") ")[-1]
+    with col_t:
+        # ▼ 集計単位をセグメントコントロールでスタイリッシュに選択！
+        time_unit = st.segmented_control("集計単位", ["月ごと", "週ごと", "日ごと"], default="月ごと", key="time_unit")
+
+    if st.button("📈 グラフを表示する", type="primary", use_container_width=True):
+        try:
+            doc = connect_gsheet()
+            
+            # 「部員名簿」と「目標メモ」以外の全シートを読み込んで合体
+            all_records = []
+            for ws in doc.worksheets():
+                if ws.title not in ["部員名簿", "目標メモ"]:
+                    try:
+                        records = ws.get_all_records()
+                        all_records.extend(records)
+                    except:
+                        pass
+                        
+            df = pd.DataFrame(all_records)
+            
+            if not df.empty:
+                u_df = df[df['氏名'] == target_user].copy()
+                if not u_df.empty:
+                    date_col = u_df.columns[0] # 「日時」列
+                    u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
+                    u_df = u_df.dropna(subset=[date_col])
+                    
+                    # 集計単位ごとのラベル付け（ハッキング！）
+                    if time_unit == "月ごと":
+                        u_df['期間'] = u_df[date_col].dt.strftime('%Y-%m') # 例: 2026-03
+                    elif time_unit == "週ごと":
+                        u_df['期間'] = u_df[date_col].dt.strftime('%Y-W%W') # 例: 2026-W12 (12週目)
+                    else: # 日ごと
+                        u_df['期間'] = u_df[date_col].dt.strftime('%Y-%m-%d') # 例: 2026-03-31
+
+                    # 期間ごとに的中率を計算
+                    graph_data = []
+                    for period in sorted(u_df['期間'].unique()):
+                        p_df = u_df[u_df['期間'] == period]
+                        hits = 0; total = 0
+                        for col in ["一本目", "二本目", "三本目", "四本目"]:
+                            hits += (p_df[col] == "○").sum()
+                            total += (p_df[col] == "○").sum() + (p_df[col] == "×").sum()
+                        
+                        rate = (hits / total * 100) if total > 0 else 0
+                        graph_data.append({"期間": period, "的中率(%)": round(rate, 1), "総引数": total, "的中数": hits})
+                    
+                    res_df = pd.DataFrame(graph_data)
+                    
+                    if not res_df.empty:
+                        st.write(f"### 📈 {target_user} さんの {time_unit} 的中率推移")
+                        
+                        # ▼ Altairを使った超絶カッコいい棒グラフ！
+                        chart = alt.Chart(res_df).mark_bar(color='#FF4B4B', cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                            x=alt.X('期間:N', title=time_unit),
+                            y=alt.Y('的中率(%):Q', title='的中率 (%)', scale=alt.Scale(domain=[0, 100])),
+                            tooltip=['期間', '的中率(%)', '的中数', '総引数'] # マウスホバーで詳細表示！
+                        ).properties(height=350)
+                        
+                        st.altair_chart(chart, use_container_width=True)
+                        
+                        with st.expander("📊 数値データを確認"):
+                            st.dataframe(res_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("集計できるデータがありません。")
+                else:
+                    st.warning(f"「{target_user}」さんのデータがクラウドにありません。")
+            else:
+                st.info("クラウドに記録データがありません。")
+                
+        except Exception as e:
+            st.error(f"グラフ生成エラー: {e}")
+
+# ▼ ここから下は今まで通り ▼
+# 送信ボタン（目標モードとグラフモードの時は表示しないようにする）
+if app_mode not in ["🎯 目標・課題メモ", "📊 的中率グラフ"]:
+    if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
+# ...
 
 # ==========================================
 # 5. 分析エリア（中高・学年不問、立ち限定的中率）
