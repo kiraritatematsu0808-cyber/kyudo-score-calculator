@@ -76,19 +76,26 @@ if "members" not in st.session_state:
 # ==========================================
 st.set_page_config(page_title="弓道 的中Pro", layout="wide")
 
-# ▼▼▼ スマホUIハッキング：ボタンを大きく押しやすくする魔法 ▼▼▼
+# ▼▼▼ スマホUIハッキング：ボタンを大きく押しやすくする魔法（最強版） ▼▼▼
 st.markdown("""
 <style>
-/* セグメントコントロール（○×ボタン）のタップ領域を拡大 */
+/* Streamlitの頑固なデザイン設定を貫通して文字と枠をデカくする */
+div[data-testid="stSegmentedControl"] * {
+    font-size: 18px !important;
+    font-weight: bold !important;
+}
 div[data-testid="stSegmentedControl"] label {
-    padding: 12px 0px !important;  /* 上下の高さを広げて押しやすく */
-    font-size: 18px !important;    /* 文字を少し大きく */
-    font-weight: bold !important;  /* 文字を太くして見やすく */
-    cursor: pointer !important;    /* 押せる感を出す */
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+/* さらに、全体を1.15倍に拡大してしまうという力技 */
+div[data-testid="stSegmentedControl"] {
+    transform: scale(1.15);
+    transform-origin: left center;
+    margin-bottom: 15px;
 }
 </style>
 """, unsafe_allow_html=True)
-
 
 if "success_msg" in st.session_state:
     st.success(st.session_state.success_msg)
