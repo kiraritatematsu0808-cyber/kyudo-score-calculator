@@ -10,7 +10,6 @@ from PIL import Image
 # ==========================================
 # 1. 接続設定
 # ==========================================
-# ⚠️ 自分のURL（そのまま使います）
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1hXJ7OsVVNpClTpLuTG2SR1-Uk41xqaD6dHkJTKvUOD0/edit?gid=0#gid=0"
 
 if "form_version" not in st.session_state:
@@ -24,7 +23,7 @@ def connect_gsheet():
     return client.open_by_url(SPREADSHEET_URL)
 
 # ==========================================
-# 2. メンバー管理（クラウド「部員名簿」シートと連動）
+# 2. メンバー管理
 # ==========================================
 def load_members():
     try:
@@ -68,6 +67,22 @@ def load_members():
 if "members" not in st.session_state:
     st.session_state.members = load_members()
 
+if "last_name" not in st.session_state:
+    st.session_state.last_name = "未選択"
+
+active_members = [m for m in st.session_state.members if m != "未選択"]
+all_grades = ["すべて"] + sorted(list(set([m.split(")")[0] + ")" for m in active_members])))
+
+def filter_members(grade_selection):
+    if grade_selection == "すべて":
+        return st.session_state.members
+    return ["未選択"] + [m for m in active_members if m.startswith(grade_selection)]
+
+def get_name_index(filtered_list):
+    if st.session_state.last_name in filtered_list:
+        return filtered_list.index(st.session_state.last_name)
+    return 0
+
 # ==========================================
 # 3. UIとメッセージ
 # ==========================================
@@ -81,11 +96,12 @@ st.title("🏹 弓道部 ポータルサイト [Pro]")
 
 with st.sidebar:
     st.header("🏆 メニュー選択")
+    # 入力と分析を完全に分離し、UIを直感的に整理
     app_mode = st.radio("機能一覧", [
-        "📝 個人練習", 
-        "👥 団体（立ち）", 
+        "📝 個人練習 (記録)", 
+        "👥 団体練習 (記録)", 
+        "📊 成績分析・月的表", 
         "🎯 目標・課題メモ", 
-        "📊 的中率グラフ",
         "📅 予定表・欠席連絡",
         "📜 昇段審査対策"
     ])
@@ -114,31 +130,72 @@ with st.sidebar:
                 except Exception as e: st.error(f"登録失敗: {e}")
 
 # ==========================================
-# 4. メインエリア（選択されたモードを表示）
+# 電卓方式（シーケンシャル入力）のロジック構築
 # ==========================================
-if "last_name" not in st.session_state:
-    st.session_state.last_name = "未選択"
+# 個人用
+if "personal_data" not in st.session_state: st.session_state.personal_data = [["未"]*4]
+def add_p_row(): st.session_state.personal_data.append(["未"]*4)
+def sub_p_row(): 
+    if len(st.session_state.personal_data) > 1: st.session_state.personal_data.pop()
 
-# 学年フィルター用の共通リストと関数を作成
-active_members = [m for m in st.session_state.members if m != "未選択"]
-all_grades = ["すべて"] + sorted(list(set([m.split(")")[0] + ")" for m in active_members])))
+def mark_p(mark):
+    for r in range(len(st.session_state.personal_data)):
+        for a in range(4):
+            if st.session_state.personal_data[r][a] == "未":
+                st.session_state.personal_data[r][a] = mark; return
+def undo_p():
+    for r in range(len(st.session_state.personal_data)-1, -1, -1):
+        for a in range(3, -1, -1):
+            if st.session_state.personal_data[r][a] != "未":
+                st.session_state.personal_data[r][a] = "未"; return
+def is_active_p(r, a):
+    for rr in range(len(st.session_state.personal_data)):
+        for aa in range(4):
+            if st.session_state.personal_data[rr][aa] == "未":
+                return r == rr and a == aa
+    return False
 
-def filter_members(grade_selection):
-    if grade_selection == "すべて":
-        return st.session_state.members
-    return ["未選択"] + [m for m in active_members if m.startswith(grade_selection)]
+# 団体用
+if "g_num" not in st.session_state: st.session_state.g_num = 3
+if "g_rows" not in st.session_state: st.session_state.g_rows = 1
+if "group_data" not in st.session_state:
+    st.session_state.group_data = [[ ["未"]*4 for _ in range(st.session_state.g_num) ] for _ in range(st.session_state.g_rows)]
 
-def get_name_index(filtered_list):
-    if st.session_state.last_name in filtered_list:
-        return filtered_list.index(st.session_state.last_name)
-    return 0
+def reset_group_data(num_members, num_rows):
+    st.session_state.group_data = [[ ["未"]*4 for _ in range(num_members) ] for _ in range(num_rows)]
+    st.session_state.g_num = num_members
+    st.session_state.g_rows = num_rows
+
+def mark_g(mark):
+    # 道場での「立ち順」に合わせて、1本目を全員分→2本目を全員分...と探す
+    for r in range(st.session_state.g_rows):
+        for a in range(4):
+            for i in range(st.session_state.g_num):
+                if st.session_state.group_data[r][i][a] == "未":
+                    st.session_state.group_data[r][i][a] = mark; return
+def undo_g():
+    for r in range(st.session_state.g_rows-1, -1, -1):
+        for a in range(3, -1, -1):
+            for i in range(st.session_state.g_num-1, -1, -1):
+                if st.session_state.group_data[r][i][a] != "未":
+                    st.session_state.group_data[r][i][a] = "未"; return
+def is_active_g(r, i, a):
+    for rr in range(st.session_state.g_rows):
+        for aa in range(4):
+            for ii in range(st.session_state.g_num):
+                if st.session_state.group_data[rr][ii][aa] == "未":
+                    return r == rr and i == ii and a == aa
+    return False
+
+# ==========================================
+# 4. メインエリア
+# ==========================================
 
 # --- A. 目標・課題メモ モード ---
 if app_mode == "🎯 目標・課題メモ":
     st.subheader("🎯 今月の目標・課題・指導メモ")
     col_g, col_n, col_m = st.columns([1, 1.5, 2])
-    with col_g:
-        s_grade = st.selectbox("学年", all_grades, key=f"memo_g_{st.session_state.form_version}")
+    with col_g: s_grade = st.selectbox("学年", all_grades, key=f"memo_g")
     with col_n:
         f_members = filter_members(s_grade)
         selected_name = st.selectbox("氏名", f_members, index=get_name_index(f_members), key="memo_name")
@@ -150,9 +207,9 @@ if app_mode == "🎯 目標・課題メモ":
     if selected_name == "未選択": st.warning("名前を選択してください。")
     else:
         st.write("---")
-        goal = st.text_area("🚀 今月の目標", placeholder="例: 的中率4割、皆中を1回以上出す", key="goal_input")
-        focus = st.text_area("🔍 今月の課題・意識すること", placeholder="例: 大三で右肘を高く、離れで緩まない", key="focus_input")
-        advice = st.text_area("🗣️ 監督コーチに指導されたこと", placeholder="例: 引き分けで肩が上がっている、もっと妻手を遠くに通して", key="advice_input")
+        goal = st.text_area("🚀 今月の目標", placeholder="例: 的中率4割、皆中を1回以上出す")
+        focus = st.text_area("🔍 今月の課題・意識すること", placeholder="例: 大三で右肘を高く、離れで緩まない")
+        advice = st.text_area("🗣️ 監督コーチに指導されたこと", placeholder="例: 引き分けで肩が上がっている")
         
         if st.button("💾 クラウドに保存・更新", type="primary", use_container_width=True):
             try:
@@ -167,16 +224,13 @@ if app_mode == "🎯 目標・課題メモ":
                 found_row = -1
                 for i, rec in enumerate(records):
                     if rec["年月"] == current_month and rec["氏名"] == pure_target_name:
-                        found_row = i + 2
-                        break
+                        found_row = i + 2; break
                 
                 if found_row != -1:
                     sheet_memo.update_cell(found_row, 3, goal)
                     sheet_memo.update_cell(found_row, 4, focus)
                     sheet_memo.update_cell(found_row, 5, advice)
-                else:
-                    sheet_memo.append_row([current_month, pure_target_name, goal, focus, advice])
-                
+                else: sheet_memo.append_row([current_month, pure_target_name, goal, focus, advice])
                 st.session_state.last_name = selected_name
                 st.success(f"✅ {current_month} の記録を保存しました！")
             except Exception as e: st.error(f"保存失敗: {e}")
@@ -185,227 +239,164 @@ if app_mode == "🎯 目標・課題メモ":
         st.subheader("📚 過去の目標・指導履歴")
         try:
             doc = connect_gsheet()
-            sheet_memo = doc.worksheet("目標メモ")
-            all_memos = pd.DataFrame(sheet_memo.get_all_records())
+            all_memos = pd.DataFrame(doc.worksheet("目標メモ").get_all_records())
             if not all_memos.empty:
                 user_memos = all_memos[all_memos['氏名'] == selected_name.split(") ")[-1]].sort_values("年月", ascending=False)
                 if not user_memos.empty:
                     for _, row in user_memos.iterrows():
                         with st.expander(f"📌 {row['年月']} の記録"):
                             st.write(f"**【今月の目標】**\n{row.get('今月の目標', '-')}")
-                            f_text = row.get('課題・意識すること', row.get('練習の主眼', '-'))
-                            st.write(f"**【課題・意識すること】**\n{f_text}")
-                            a_text = row.get('監督コーチからの指導', '-')
-                            st.write(f"**【監督コーチに指導されたこと】**\n{a_text}")
+                            st.write(f"**【課題・意識すること】**\n{row.get('課題・意識すること', '-')}")
+                            st.write(f"**【監督コーチからの指導】**\n{row.get('監督コーチからの指導', '-')}")
                 else: st.info("過去の履歴はありません。")
         except: st.info("履歴データがまだありません。")
 
-# --- B. 個人練習モード ---
-elif app_mode == "📝 個人練習":
+# --- B. 個人練習 (記録) ---
+elif app_mode == "📝 個人練習 (記録)":
     st.subheader("📝 個人練習 記録フォーム")
     col_g, col_n, col_t = st.columns([1, 1.5, 2])
-    with col_g:
-        s_grade = st.selectbox("学年", all_grades, key=f"p_g_{st.session_state.form_version}")
+    with col_g: s_grade = st.selectbox("学年", all_grades, key="p_g")
     with col_n:
         f_members = filter_members(s_grade)
-        selected_name = st.selectbox("氏名", f_members, index=get_name_index(f_members), key=f"pn_{st.session_state.form_version}")
-    with col_t:
-        practice_type = st.segmented_control("種別", ["自主練習", "射込み", "立ち"], default="自主練習", key=f"pt_{st.session_state.form_version}")
+        selected_name = st.selectbox("氏名", f_members, index=get_name_index(f_members), key="p_name")
+    with col_t: practice_type = st.segmented_control("種別", ["自主練習", "射込み"], default="自主練習", key="p_type")
     
-    if "personal_rows" not in st.session_state: st.session_state.personal_rows = 1
+    st.divider()
+    st.write("### 👇 結果を入力（下のボタンをポンポン押すだけ！）")
+    # 究極のワンタップ入力パネル
+    bc1, bc2, bc3 = st.columns(3)
+    with bc1: st.button("🟢 ◯ (アタリ)", on_click=mark_p, args=("○",), use_container_width=True, type="primary")
+    with bc2: st.button("🔴 ✕ (ハズレ)", on_click=mark_p, args=("×",), use_container_width=True, type="primary")
+    with bc3: st.button("🔙 1つ戻る", on_click=undo_p, use_container_width=True)
+
+    st.write("---")
     c1, c2, _ = st.columns([1,1,4])
-    with c1: 
-        if st.button("＋ 1立追加"): st.session_state.personal_rows += 1
-    with c2:
-        if st.button("－ 1立削除") and st.session_state.personal_rows > 1: st.session_state.personal_rows -= 1
-            
-    all_data = []
-    for r in range(st.session_state.personal_rows):
-        st.write(f"**{r+1}立目**")
-        cols = st.columns(4)
-        row_res = []
+    with c1: st.button("＋ 1立追加", on_click=add_p_row)
+    with c2: st.button("－ 1立削除", on_click=sub_p_row)
+
+    # 状態の可視化
+    for r, row_data in enumerate(st.session_state.personal_data):
+        cols = st.columns([1, 1, 1, 1, 1, 2])
+        with cols[0]: st.write(f"**{r+1}立目**")
         for a in range(4):
-            with cols[a]:
-                res = st.segmented_control(f"p_{r}_{a}", ["未", "○", "×"], default="未", key=f"p_{r}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
-                row_res.append(res)
-        all_data.append({"name": selected_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
+            val = row_data[a]
+            icon = "🟢" if val=="○" else ("🔴" if val=="×" else "⚪")
+            with cols[a+1]:
+                if is_active_p(r, a): st.markdown(f"<div style='text-align:center; background-color:#555; border-radius:5px;'><b>👉 {icon}</b></div>", unsafe_allow_html=True)
+                else: st.markdown(f"<div style='text-align:center;'>{icon}</div>", unsafe_allow_html=True)
+        # AI連携のダミー導線
+        with cols[5]: 
+            if st.button("🎥 3D解析", key=f"3d_p_{r}", help="Mocopiデータを分析"): st.toast("⚠️ この機能はmocopi連携後に有効になります", icon="🤖")
 
-# --- C. 団体モード ---
-elif app_mode == "👥 団体（立ち）": 
-    st.subheader("👥 団体（立ち） 記録フォーム")
-    num_members = st.sidebar.number_input("立ちの人数", min_value=2, max_value=6, value=3)
-    practice_type = "立ち"
-    positions = {1:["大前"], 2:["大前","落"], 3:["大前","中","落"], 4:["大前","二的","三的","落"], 5:["大前","二的","中","落前","落"], 6:["大前","二的","三的","四的","落前","落"]}
-    cur_pos = positions.get(num_members, ["-"]*num_members)
-    
-    if "group_rows" not in st.session_state: st.session_state.group_rows = 1
-    c1, c2, _ = st.columns([1,1,4])
-    with c1: 
-        if st.button("＋ 1立追加", key="g_add"): st.session_state.group_rows += 1
-    with c2:
-        if st.button("－ 1立削除", key="g_sub") and st.session_state.group_rows > 1: st.session_state.group_rows -= 1
-    
-    all_data = []
-    for r in range(st.session_state.group_rows):
-        st.write(f"**{r+1}立目**")
-        for i in range(num_members):
-            # 団体戦用にカラムを細かく分割（役職, 学年, 氏名, 矢×4）
-            cols = st.columns([0.8, 1.2, 1.8, 1, 1, 1, 1])
-            with cols[0]: st.write(f"**{cur_pos[i]}**")
-            with cols[1]:
-                g_grade = st.selectbox("学年", all_grades, key=f"gg_{r}_{i}_{st.session_state.form_version}", label_visibility="collapsed")
-            with cols[2]:
-                f_members = filter_members(g_grade)
-                m_name = st.selectbox("氏名", f_members, index=0, key=f"gm_{r}_{i}_{st.session_state.form_version}", label_visibility="collapsed")
-            
-            row_res = []
-            for a in range(4):
-                with cols[a+3]:
-                    res = st.segmented_control(f"gr_{r}_{i}_{a}", ["未", "○", "×"], default="未", key=f"gr_{r}_{i}_{a}_{st.session_state.form_version}", label_visibility="collapsed")
-                    row_res.append(res)
-            all_data.append({"name": m_name, "type": practice_type, "num": f"{r+1}立目", "data": row_res})
-        st.write("---")
-
-# --- D. 的中率グラフ モード ---
-elif app_mode == "📊 的中率グラフ":
-    st.subheader("📊 的中率推移グラフ")
-    col_g, col_u, col_t = st.columns([1, 1.5, 2])
-    with col_g:
-        s_grade = st.selectbox("学年", all_grades, key="graph_g")
-    with col_u:
-        f_members = filter_members(s_grade)
-        target_user_full = st.selectbox("分析したい人", f_members, key="graph_user")
-        target_user = target_user_full.split(") ")[-1]
-    with col_t:
-        time_unit = st.segmented_control("集計単位", ["月ごと", "週ごと", "日ごと"], default="月ごと", key="time_unit")
-
-    if st.button("📈 グラフを表示する", type="primary", use_container_width=True):
-        if target_user_full == "未選択":
-            st.error("名前を選択してください！")
-        else:
-            try:
-                doc = connect_gsheet()
-                all_records = []
-                for ws in doc.worksheets():
-                    if ws.title not in ["部員名簿", "目標メモ", "欠席連絡"]:
-                        try: all_records.extend(ws.get_all_records())
-                        except: pass
-                            
-                df = pd.DataFrame(all_records)
-                if not df.empty:
-                    u_df = df[df['氏名'] == target_user].copy()
-                    if not u_df.empty:
-                        date_col = u_df.columns[0]
-                        u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
-                        u_df = u_df.dropna(subset=[date_col])
-                        
-                        if time_unit == "月ごと": u_df['期間'] = u_df[date_col].dt.strftime('%Y-%m')
-                        elif time_unit == "週ごと": u_df['期間'] = u_df[date_col].dt.strftime('%Y-W%W')
-                        else: u_df['期間'] = u_df[date_col].dt.strftime('%Y-%m-%d')
-
-                        graph_data = []
-                        for period in sorted(u_df['期間'].unique()):
-                            p_df = u_df[u_df['期間'] == period]
-                            hits = 0; total = 0
-                            for col in ["一本目", "二本目", "三本目", "四本目"]:
-                                hits += (p_df[col] == "○").sum()
-                                total += (p_df[col] == "○").sum() + (p_df[col] == "×").sum()
-                            rate = (hits / total * 100) if total > 0 else 0
-                            graph_data.append({"期間": period, "的中率(%)": round(rate, 1), "総引数": total, "的中数": hits})
-                        
-                        res_df = pd.DataFrame(graph_data)
-                        if not res_df.empty:
-                            st.write(f"### 📈 {target_user} さんの {time_unit} 的中率推移")
-                            chart = alt.Chart(res_df).mark_bar(color='#FF4B4B', cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-                                x=alt.X('期間:N', title=time_unit),
-                                y=alt.Y('的中率(%):Q', title='的中率 (%)', scale=alt.Scale(domain=[0, 100])),
-                                tooltip=['期間', '的中率(%)', '的中数', '総引数']
-                            ).properties(height=350)
-                            st.altair_chart(chart, use_container_width=True)
-                            with st.expander("📊 数値データを確認"): st.dataframe(res_df, use_container_width=True, hide_index=True)
-                        else: st.warning("集計できるデータがありません。")
-                    else: st.warning(f"「{target_user}」さんのデータがクラウドにありません。")
-                else: st.info("クラウドに記録データがありません。")
-            except Exception as e: st.error(f"グラフ生成エラー: {e}")
-
-# --- E. 予定表・欠席連絡 モード ---
-elif app_mode == "📅 予定表・欠席連絡":
-    st.subheader("📅 予定表・欠席連絡")
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.write("#### 📆 今月の予定表")
-        try:
-            img = Image.open("schedule.jpg")
-            st.image(img, use_container_width=True)
-        except:
-            st.warning("⚠️ 予定表の画像（schedule.jpg）が見つかりません。VS Codeの左側にドラッグ＆ドロップして入れてください。")
-            
-    with col2:
-        st.write("#### 📝 欠席・遅刻連絡")
-        st.write("部活を休む、または遅刻する場合は以下のボタンからGoogleフォームに入力してください。")
-        st.link_button("👉 欠席連絡フォームを開く", "https://forms.gle/8MmQydxeJvD2Tpm97", type="primary", use_container_width=True)
-        st.divider()
-        st.caption("※フォーム送信後、顧問の先生に自動で通知されます。")
-
-# --- F. 昇段審査対策 モード ---
-elif app_mode == "📜 昇段審査対策":
-    st.subheader("📜 昇段審査対策")
-    st.markdown("### 🚧 Coming Soon...")
-    st.write("・学科試験の過去問集")
-    st.write("・体配（たいはい）チェックリスト")
-    st.write("・お手本動画ライブラリ")
-    st.info("審査が近くなったら公開予定です。お楽しみに！")
-
-# ==========================================
-# 5. 保存ボタン（個人練習・団体モードの時だけ表示）
-# ==========================================
-if app_mode in ["📝 個人練習", "👥 団体（立ち）"]:
     st.write("---")
     if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
-        if "未選択" in [d["name"] for d in all_data]: st.error("名前を選択してください！")
+        if selected_name == "未選択": st.error("名前を選択してください！")
         else:
             try:
                 doc = connect_gsheet()
                 JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
                 now = datetime.datetime.now(JST)
-                now_str = now.strftime("%Y-%m-%d %H:%M:%S")
                 sheet_title = now.strftime("%Y年%m月")
-                
                 try: sheet = doc.worksheet(sheet_title)
                 except:
                     sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
                     sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
                 
-                rows = [[now_str, d["name"].split(") ")[-1], d["type"], d["num"]] + d["data"] for d in all_data]
-                sheet.append_rows(rows)
+                rows = []
+                for r, row_data in enumerate(st.session_state.personal_data):
+                    rows.append([now.strftime("%Y-%m-%d %H:%M:%S"), selected_name.split(") ")[-1], practice_type, f"{r+1}立目"] + row_data)
                 
-                st.session_state.last_name = all_data[0]["name"]
-                st.session_state.form_version += 1
-                st.session_state.personal_rows = 1
-                st.session_state.group_rows = 1
-                st.session_state.success_msg = f"✅ クラウド保存完了！ ({sheet_title} シートに記録しました)"
+                sheet.append_rows(rows)
+                st.session_state.last_name = selected_name
+                st.session_state.personal_data = [["未"]*4] # リセット
+                st.success(f"✅ クラウド保存完了！ ({sheet_title} シートに記録しました)")
                 st.rerun()
             except Exception as e: st.error(f"保存失敗: {e}")
 
-# ==========================================
-# 6. 分析エリア（新機能画面では非表示にする）
-# ==========================================
-if app_mode not in ["📅 予定表・欠席連絡", "📜 昇段審査対策"]:
+# --- C. 団体練習 (記録) ---
+elif app_mode == "👥 団体練習 (記録)": 
+    st.subheader("👥 団体練習（立ち） 記録フォーム")
+    
+    col_n, col_r, _ = st.columns([1,1,3])
+    with col_n: num_members = st.number_input("立ちの人数", min_value=2, max_value=6, value=st.session_state.g_num)
+    with col_r: group_rows = st.number_input("引く立数", min_value=1, max_value=10, value=st.session_state.g_rows)
+    
+    # 人数や立数が変わったらデータをリセット
+    if num_members != st.session_state.g_num or group_rows != st.session_state.g_rows:
+        reset_group_data(num_members, group_rows)
+        st.rerun()
+
     st.divider()
-    st.subheader("📈 クラウド成績分析パネル")
+    st.write("### 👇 結果を入力（下のボタンをポンポン押すだけ！）")
+    st.caption("※大前の1本目→二的の1本目…の順に、自動でフォーカス（👉）が移動します。")
+    bc1, bc2, bc3 = st.columns(3)
+    with bc1: st.button("🟢 ◯ (アタリ)", on_click=mark_g, args=("○",), use_container_width=True, type="primary")
+    with bc2: st.button("🔴 ✕ (ハズレ)", on_click=mark_g, args=("×",), use_container_width=True, type="primary")
+    with bc3: st.button("🔙 1つ戻る", on_click=undo_g, use_container_width=True)
+    st.write("---")
+
+    positions = {2:["大前","落"], 3:["大前","中","落"], 4:["大前","二的","三的","落"], 5:["大前","二的","中","落前","落"], 6:["大前","二的","三的","四的","落前","落"]}
+    cur_pos = positions.get(num_members, ["-"]*num_members)
+    
+    for r in range(st.session_state.g_rows):
+        st.write(f"**{r+1}立目**")
+        for i in range(st.session_state.g_num):
+            cols = st.columns([1, 1.5, 2, 1, 1, 1, 1, 1.5])
+            with cols[0]: st.write(f"**{cur_pos[i]}**")
+            with cols[1]: g_grade = st.selectbox("学年", all_grades, key=f"gg_{r}_{i}", label_visibility="collapsed")
+            with cols[2]:
+                f_members = filter_members(g_grade)
+                st.selectbox("氏名", f_members, index=0, key=f"gm_{r}_{i}", label_visibility="collapsed")
+            
+            for a in range(4):
+                val = st.session_state.group_data[r][i][a]
+                icon = "🟢" if val=="○" else ("🔴" if val=="×" else "⚪")
+                with cols[a+3]:
+                    if is_active_g(r, i, a): st.markdown(f"<div style='text-align:center; background-color:#555; border-radius:5px;'><b>👉 {icon}</b></div>", unsafe_allow_html=True)
+                    else: st.markdown(f"<div style='text-align:center;'>{icon}</div>", unsafe_allow_html=True)
+            with cols[7]:
+                if st.button("🎥 解析", key=f"3d_g_{r}_{i}"): st.toast("⚠️ mocopi連携後に有効になります", icon="🤖")
+        st.write("---")
+
+    if st.button("🚀 クラウドへ一括送信・保存", type="primary", use_container_width=True):
+        names = [st.session_state[f"gm_0_{i}"] for i in range(st.session_state.g_num)]
+        if "未選択" in names: st.error("名前を選択していない枠があります！")
+        else:
+            try:
+                doc = connect_gsheet()
+                JST = datetime.timezone(datetime.timedelta(hours=9), 'JST')
+                now = datetime.datetime.now(JST)
+                sheet_title = now.strftime("%Y年%m月")
+                try: sheet = doc.worksheet(sheet_title)
+                except:
+                    sheet = doc.add_worksheet(title=sheet_title, rows="1000", cols="20")
+                    sheet.append_row(["日時", "氏名", "練習種別", "立数", "一本目", "二本目", "三本目", "四本目"])
+                
+                rows = []
+                for r in range(st.session_state.g_rows):
+                    for i in range(st.session_state.g_num):
+                        name = st.session_state[f"gm_{r}_{i}"].split(") ")[-1]
+                        rows.append([now.strftime("%Y-%m-%d %H:%M:%S"), name, "立ち", f"{r+1}立目"] + st.session_state.group_data[r][i])
+                
+                sheet.append_rows(rows)
+                reset_group_data(st.session_state.g_num, st.session_state.g_rows)
+                st.success(f"✅ 団体記録をクラウドに保存しました！")
+                st.rerun()
+            except Exception as e: st.error(f"保存失敗: {e}")
+
+# --- D. 成績分析・月的表 モード (分離・統合) ---
+elif app_mode == "📊 成績分析・月的表":
+    st.subheader("📊 成績分析 ＆ 月的表ポータル")
     
     col_ag, col_au = st.columns([1, 2])
-    with col_ag:
-        s_grade_analysis = st.selectbox("学年", all_grades, key="stats_g")
+    with col_ag: s_grade_analysis = st.selectbox("学年", all_grades, key="stats_g")
     with col_au:
         f_members_analysis = filter_members(s_grade_analysis)
         target_user_full = st.selectbox("分析したい人を選択", f_members_analysis, key="stats_user")
         target_user = target_user_full.split(") ")[-1]
 
-    if st.button("クラウドからデータを取得して分析"):
-        if target_user_full == "未選択":
-            st.error("名前を選択してください！")
+    if st.button("🔍 クラウドからデータを取得して分析", type="primary"):
+        if target_user_full == "未選択": st.error("名前を選択してください！")
         else:
             try:
                 doc = connect_gsheet()
@@ -421,79 +412,79 @@ if app_mode not in ["📅 予定表・欠席連絡", "📜 昇段審査対策"]:
                     if not u_df.empty:
                         date_col = u_df.columns[0]
                         u_df[date_col] = pd.to_datetime(u_df[date_col], errors='coerce')
+                        u_df = u_df.dropna(subset=[date_col])
                         u_df['年月'] = u_df[date_col].dt.strftime('%Y年%m月')
                         
-                        st.write(f"### 📅 {target_user} さんの月的表")
-                        available_months = sorted(u_df['年月'].dropna().unique(), reverse=True)
+                        # 分析画面をタブでスッキリ整理
+                        tab1, tab2 = st.tabs(["📅 月的表 (成績まとめ)", "📈 的中率推移グラフ"])
                         
-                        if available_months:
+                        with tab1:
+                            st.write(f"### 📅 {target_user} さんの月的表")
+                            available_months = sorted(u_df['年月'].unique(), reverse=True)
                             for month in available_months:
                                 m_df = u_df[u_df['年月'] == month]
-                                m_hits = 0; m_total = 0
-                                for col in ["一本目", "二本目", "三本目", "四本目"]:
-                                    m_hits += (m_df[col] == "○").sum()
-                                    m_total += (m_df[col] == "○").sum() + (m_df[col] == "×").sum()
+                                m_hits = sum((m_df[col] == "○").sum() for col in ["一本目", "二本目", "三本目", "四本目"])
+                                m_total = sum((m_df[col] == "○").sum() + (m_df[col] == "×").sum() for col in ["一本目", "二本目", "三本目", "四本目"])
                                 m_rate = (m_hits / m_total * 100) if m_total > 0 else 0
                                 
-                                tachi_m_df = m_df[m_df['練習種別'] == '立ち']
-                                t_m_hits = 0; t_m_total = 0
-                                for col in ["一本目", "二本目", "三本目", "四本目"]:
-                                    t_m_hits += (tachi_m_df[col] == "○").sum()
-                                    t_m_total += (tachi_m_df[col] == "○").sum() + (tachi_m_df[col] == "×").sum()
-                                t_m_rate = (t_m_hits / t_m_total * 100) if t_m_total > 0 else 0
-
                                 with st.expander(f"📌 {month} の成績: {m_hits}中 / {m_total}本 (的中率: {m_rate:.1f}%)", expanded=(month == available_months[0])):
-                                    st.markdown("**◆ 月間総合（すべての練習）**")
                                     c1, c2, c3 = st.columns(3)
                                     c1.metric("総引数", f"{m_total}本")
                                     c2.metric("総的中", f"{m_hits}本")
                                     c3.metric("総合 的中率", f"{m_rate:.1f}%")
-                                    st.markdown("**◆ 月間「立ち」限定**")
-                                    if t_m_total > 0:
-                                        tc1, tc2, tc3 = st.columns(3)
-                                        tc1.metric("立ち引数", f"{t_m_total}本")
-                                        tc2.metric("立ち的中", f"{t_m_hits}本")
-                                        tc3.metric("立ち 的中率", f"{t_m_rate:.1f}%")
-                                    else: st.info("この月の「立ち」のデータはありません。")
-                        
-                        st.divider()
-                        tachi_df = u_df[u_df['練習種別'] == '立ち'].copy()
-                        hits = 0; total = 0
-                        for col in ["一本目", "二本目", "三本目", "四本目"]:
-                            hits += (u_df[col] == "○").sum()
-                            total += (u_df[col] == "○").sum() + (u_df[col] == "×").sum()
-                        
-                        st.write(f"#### {target_user} さんの総合成績（全期間）")
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("総引数", f"{total}本")
-                        m2.metric("総的中", f"{hits}本")
-                        m3.metric("総的中率", f"{(hits/total*100):.1f}%" if total>0 else "0%")
-                        
-                        with st.expander("🔍 「立ち」練習の詳細を分析（全期間）"):
-                            if tachi_df.empty: st.info("「立ち」のデータがありません。")
-                            else:
-                                st.write("#### 🕒 直近の「立ち」記録（最新5件）")
-                                recent_tachi_df = tachi_df.sort_values(by=date_col, ascending=False).head(5).copy()
-                                recent_tachi_df[date_col] = recent_tachi_df[date_col].dt.strftime('%Y-%m-%d %H:%M')
-                                st.dataframe(recent_tachi_df, use_container_width=True, hide_index=True)
-                                st.divider()
-                                t_hits = 0; t_total = 0
-                                arrow_stats = {"一本目": [0,0], "二本目": [0,0], "三本目": [0,0], "四本目": [0,0]}
-                                for _, row in tachi_df.iterrows():
-                                    for col in ["一本目", "二本目", "三本目", "四本目"]:
-                                        if row[col] == "○": t_hits += 1; t_total += 1; arrow_stats[col][0] += 1; arrow_stats[col][1] += 1
-                                        elif row[col] == "×": t_total += 1; arrow_stats[col][1] += 1
-                                
-                                st.write("#### 「立ち」のみの総的中率")
-                                st.subheader(f"🎯 立ち的中率: {(t_hits/t_total*100):.1f}% ({t_hits}中/{t_total}本)")
-                                st.write("#### 本数別の的中率")
-                                d_cols = st.columns(4)
-                                for i, col in enumerate(["一本目", "二本目", "三本目", "四本目"]):
-                                    h, t = arrow_stats[col]
-                                    r = (h / t * 100) if t > 0 else 0
-                                    with d_cols[i]: st.metric(col, f"{r:.1f}%", help=f"{h}/{t}")
-                    else: st.warning("データがありません")
-                else: st.info("クラウドにデータがありません")
+                                    
+                                    # ⚠️ ここにAI分析のダミー警告を設置して未来を匂わせる
+                                    if m_rate < 40:
+                                        st.warning("🤖 AI分析レポート：今月は「離れの瞬間の緩み」が多発しています。目標メモのゴースト映像を確認してください。")
+
+                            st.divider()
+                            st.write("#### 🕒 直近の記録（最新5件）")
+                            recent_df = u_df.sort_values(by=date_col, ascending=False).head(5).copy()
+                            recent_df[date_col] = recent_df[date_col].dt.strftime('%Y-%m-%d %H:%M')
+                            st.dataframe(recent_df, use_container_width=True, hide_index=True)
+
+                        with tab2:
+                            st.write(f"### 📈 的中率推移グラフ")
+                            time_unit = st.radio("集計単位", ["月ごと", "週ごと", "日ごと"], horizontal=True)
+                            
+                            if time_unit == "月ごと": u_df['期間'] = u_df[date_col].dt.strftime('%Y-%m')
+                            elif time_unit == "週ごと": u_df['期間'] = u_df[date_col].dt.strftime('%Y-W%W')
+                            else: u_df['期間'] = u_df[date_col].dt.strftime('%Y-%m-%d')
+
+                            graph_data = []
+                            for period in sorted(u_df['期間'].unique()):
+                                p_df = u_df[u_df['期間'] == period]
+                                hits = sum((p_df[col] == "○").sum() for col in ["一本目", "二本目", "三本目", "四本目"])
+                                total = sum((p_df[col] == "○").sum() + (p_df[col] == "×").sum() for col in ["一本目", "二本目", "三本目", "四本目"])
+                                rate = (hits / total * 100) if total > 0 else 0
+                                graph_data.append({"期間": period, "的中率(%)": round(rate, 1), "総引数": total, "的中数": hits})
+                            
+                            res_df = pd.DataFrame(graph_data)
+                            if not res_df.empty:
+                                chart = alt.Chart(res_df).mark_bar(color='#FF4B4B', cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                                    x=alt.X('期間:N', title=time_unit),
+                                    y=alt.Y('的中率(%):Q', title='的中率 (%)', scale=alt.Scale(domain=[0, 100])),
+                                    tooltip=['期間', '的中率(%)', '的中数', '総引数']
+                                ).properties(height=350)
+                                st.altair_chart(chart, use_container_width=True)
+                    else: st.warning(f"「{target_user}」さんのデータがありません。")
+                else: st.info("クラウドに記録データがありません。")
             except Exception as e: st.error(f"分析エラー: {e}")
 
+# --- E. 予定表・欠席連絡 モード ---
+elif app_mode == "📅 予定表・欠席連絡":
+    st.subheader("📅 予定表・欠席連絡")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.write("#### 📆 今月の予定表")
+        try: st.image(Image.open("schedule.jpg"), use_container_width=True)
+        except: st.warning("⚠️ 予定表の画像（schedule.jpg）が見つかりません。")
+    with col2:
+        st.write("#### 📝 欠席・遅刻連絡")
+        st.link_button("👉 欠席連絡フォームを開く", "https://forms.gle/8MmQydxeJvD2Tpm97", type="primary", use_container_width=True)
 
+# --- F. 昇段審査対策 モード ---
+elif app_mode == "📜 昇段審査対策":
+    st.subheader("📜 昇段審査対策")
+    st.markdown("### 🚧 Coming Soon...")
+    st.info("審査が近くなったら公開予定です。お楽しみに！")
